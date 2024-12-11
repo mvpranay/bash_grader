@@ -32,7 +32,8 @@ function add(){
     remote=`cat .remote`
 
     # check if the file is already being tracked
-    out=`grep -q $1 $remote/.tracked_files`
+    tracked_files=`cat $remote/.tracked_files`
+    out=`grep -q "^$1$" $tracked_files`
     if [ $out != "" ]; then
         echo "File is already being tracked"
         return
@@ -60,14 +61,15 @@ function rm(){
     remote=`cat .remote`
 
     # check if the file is not being tracked
-    out=`grep -q $1 $remote/.tracked_files`
+    tracked_files=`cat $remote/.tracked_files`
+    out=`grep -q $1 $tracked_files`
     if [ $out == "" ]; then
         echo "File is not being tracked"
         return
     fi
 
     # using grep to pick all the lines except the line containing the file
-    grep -v $1 $remote/.tracked_files > .temp
+    grep -v $1 $tracked_files > .temp
     mv .temp $remote/.tracked_files
 
     return
@@ -91,14 +93,14 @@ function status(){
 
     # check for new csv files that aren't being tracked
     for file in ${!local_files[@]}; do
-        if [[ -v ${tracked_files[$file]} ]]; then
+        if [[ ! -v ${tracked_files[$file]} ]]; then
             echo "New file: $file"
         fi
     done
 
     # check for files that are being tracked but are not present
     for file in ${!tracked_files[@]}; do
-        if [[ -v ${local_files[$file]} ]]; then
+        if [[ ! -v ${local_files[$file]} ]]; then
             continue
         else
             echo "Deleted file: $file"
