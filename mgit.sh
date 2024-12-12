@@ -1,31 +1,31 @@
-function init(){
+init(){
     if [ -f ".remote" ]; then
-        echo "Already initialized"
+        echo "Already initialized."
         return
     fi
 
     # first argument is the remote repository
     if [ -z "$1" ]; then
-        echo "Please provide the remote repository"
+        echo "Please provide the remote repository."
         return
     fi
 
     echo $1 > .remote
 
-    touch $1/.git_log
-    touch $1/.tracked_files
-    touch $1/.curr_commit_id
-    
+    : > $1/.git_log
+    : > $1/.tracked_files
+    : > $1/.curr_commit_id
+
     echo "Initialized remote repository."
 
     return
 }
 
 # adds a file, once added, the file will be tracked. only the latest version will be considered for all purposes
-function add(){
+add(){
     # check if the file exists
     if [ ! -f $1 ]; then
-        echo "File does not exist"
+        echo "File does not exist."
         return
     fi
 
@@ -33,49 +33,53 @@ function add(){
 
     # check if the file is already being tracked
     tracked_files=`cat $remote/.tracked_files`
-    out=`grep -q "^$1$" $tracked_files`
-    if [ $out != "" ]; then
-        echo "File is already being tracked"
-        return
+    if [ ! -z "$tracked_files" ]; then
+        out=`cat $remote/.tracked_files | egrep "^$1$"`
+        if [ ! -z "$out" ]; then
+            echo "File is already being tracked."
+            return
+        fi
     fi
 
     # ensure file is a .csv
     if [[ $1 != *".csv" ]]; then
-        echo "Only .csv files are allowed"
+        echo "Only .csv files are allowed."
         return
     fi
 
     echo $1 >> $remote/.tracked_files
 
+    echo "Added $1 to tracking."
     return
 }
 
 # removes a file. once removed, the file will not be tracked
-function rm(){
+rm(){
     # check if the file exists
     if [ ! -f $1 ]; then
-        echo "File does not exist"
+        echo "File does not exist."
         return
     fi
 
     remote=`cat .remote`
 
     # check if the file is not being tracked
-    tracked_files=`cat $remote/.tracked_files`
-    out=`grep -q $1 $tracked_files`
-    if [ $out == "" ]; then
-        echo "File is not being tracked"
+    out=`cat $remote/.tracked_files | egrep "^$1$"`
+    if [ -z $out ]; then
+        echo "File is not being tracked."
         return
     fi
 
     # using grep to pick all the lines except the line containing the file
-    grep -v $1 $tracked_files > .temp
+    # grep -v $1 $tracked_files > .temp
+    cat $remote/.tracked_files | grep -v $1 > .temp
     mv .temp $remote/.tracked_files
 
+    echo "Removed $1 from tracking."
     return
 }
 
-function status(){
+status(){
 
     declare -A tracked_files
 
@@ -115,7 +119,7 @@ function status(){
     # check if files have been modified
     for file in ${!tracked_files[@]}; do
         if [[ -v ${local_files[$file]} ]]; then
-            if [ `diff $file $remote/$latest_commit_id/$file` != "" ]; then
+            if [ ! -z `diff $file $remote/$latest_commit_id/$file` ]; then
                 echo "Modified file: $file"
             fi
         fi
@@ -125,7 +129,7 @@ function status(){
 }
 
 # generate a random 16 digit hash id
-function hash(){
+hash(){
     hash_value=""
     for i in {1..16}; do
         hash_value+=$((${RANDOM}%10))
@@ -134,11 +138,11 @@ function hash(){
     return;
 }
 
-function commit(){
+commit(){
     # commit msg is $*
 
     # check if there are changes to commit
-    if [ `status` == "" ]; then
+    if [ -z "`status`" ]; then
         echo "No changes to commit"
         return
     fi
@@ -149,7 +153,7 @@ function commit(){
         return
     fi
 
-    remote=`cat .remote/`
+    remote=`cat .remote`
 
     # obtain hash id
     hash_id=`hash`
@@ -170,9 +174,9 @@ function commit(){
     return
 }
 
-function checkout(){
+checkout(){
     # ensure there are no changes after the latest commit
-    if [ `status` != "" ]; then
+    if [ ! -z `status` ]; then
         echo "Changes made after latest commit."
         echo "Commit changes before checking out a commit."
         return
@@ -201,8 +205,8 @@ function checkout(){
     done
 
     # obtain the commit id of the commit
-    matching_logs=`cat $remote/.git_log | egrep $1`
-    commit_id=${matching_logs%:*}
+    matching_log=`cat $remote/.git_log | egrep $1`
+    commit_id=${matching_log%:*}
 
     # copy files from the directory to the current directory
     files_in_commit=`ls $remote/$commit_id`
@@ -218,3 +222,22 @@ function checkout(){
 
     return
 }
+
+if [[ $1 == "init" ]]; then 
+    init $2
+elif [[ $1 == "add" ]]; then
+    add $2
+elif [[ $1 == "commit" ]]; then
+    # obtain commit message properly
+    com_msg=$*
+    com_msg=${com_msg#commit}
+    commit $com_msg
+elif [[ $1 == "rm" ]]; then
+    rm $2
+elif [[ $1 == "status" ]]; then
+    status
+elif [[ $1 == "checkout" ]]; then
+    checkout $2
+else
+    echo "Invalid command."
+fi
