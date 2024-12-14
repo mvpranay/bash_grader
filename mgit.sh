@@ -53,8 +53,18 @@ add(){
     return
 }
 
+log(){
+    remote=`cat .remote`
+
+    curr_commit_id=`cat $remote/.curr_commit_id`
+
+    sed "/^$curr_commit_id:/s/$/ <--/" "$remote/.git_log"
+
+    return
+}
+
 # removes a file. once removed, the file will not be tracked
-rm(){
+remove(){
     # check if the file exists
     if [ ! -f $1 ]; then
         echo "File does not exist."
@@ -81,13 +91,16 @@ rm(){
 
 status(){
 
-    declare -A tracked_files
-
     remote=`cat .remote`
 
-    while read line; do
-        tracked_files[$line]=1
-    done < "$remote/.tracked_files"
+    curr_commit_id=`cat $remote/.curr_commit_id`
+    latest_commit_id=`tail -n 1 $remote/.git_log | cut -d ":" -f 1`
+
+    declare -A latest_commit_files
+
+    for file in `ls $remote/$latest_commit_id`; do
+        latest_commit_files[$file]=1
+    done
 
     declare -A local_files
 
@@ -97,30 +110,34 @@ status(){
 
     # check for new csv files that aren't being tracked
     for file in ${!local_files[@]}; do
-        if [[ ! -v ${tracked_files[$file]} ]]; then
-            echo "New file: $file"
+        if [[ ! -v latest_commit_files[$file] ]]; then
+            if [ -z "`cat $remote/.tracked_files | egrep $file `" ]; then
+                echo "New file: $file (untracked)."
+            else
+                echo "New file: $file (tracked)."
+            fi
         fi
     done
 
     # check for files that are being tracked but are not present
-    for file in ${!tracked_files[@]}; do
-        if [[ ! -v ${local_files[$file]} ]]; then
-            continue
-        else
-            echo "Deleted file: $file"
+    for file in ${!latest_commit_files[@]}; do
+        if [[ ! -v local_files[$file] ]]; then
+            echo "Deleted file: $file."
         fi
     done
 
-    # obtain the latest commit id
-    latest_commit=`tail -n 1 $remote/.git_log`
-    # strip the : and commit msg as the line is in the format <commit_id>:<commit_msg>
-    latest_commit_id=${latest_commit%:*}
+    # if no commits made yet
+    if [ -z $curr_commit_id ]; then
+        return
+    fi
+
+    old_files=`ls $remote/$curr_commit_id`
 
     # check if files have been modified
-    for file in ${!tracked_files[@]}; do
-        if [[ -v ${local_files[$file]} ]]; then
-            if [ ! -z `diff $file $remote/$latest_commit_id/$file` ]; then
-                echo "Modified file: $file"
+    for file in ${old_files[@]}; do
+        if [[ -v local_files[$file] ]]; then
+            if [ ! -z "`diff $file $remote/$latest_commit_id/$file`" ]; then
+                echo "Modified file: $file."
             fi
         fi
     done
@@ -143,13 +160,13 @@ commit(){
 
     # check if there are changes to commit
     if [ -z "`status`" ]; then
-        echo "No changes to commit"
+        echo "No changes to commit."
         return
     fi
 
     # check if the commit msg is empty
     if [ -z "$*" ]; then
-        echo "Please provide a commit message"
+        echo "Please provide a commit message."
         return
     fi
 
@@ -170,43 +187,39 @@ commit(){
     echo "$hash_id:$*" >> $remote/.git_log
     echo "$hash_id" > $remote/.curr_commit_id
 
-    echo "Committed with id $hash_id"
+    echo "Committed with id $hash_id."
     return
 }
 
 checkout(){
-    # ensure there are no changes after the latest commit
-    if [ ! -z `status` ]; then
-        echo "Changes made after latest commit."
-        echo "Commit changes before checking out a commit."
-        return
-    fi
-
     # commit hash id is $1
     remote=`cat .remote`
 
     # check if the hash id matches the beginning of exactly one commit id
     num_matches=`cat $remote/.git_log | egrep "^$1" | wc -l`
 
-    if [ $num_matches -eq 0]; then
-        echo "No such commit id"
+    if [ $num_matches -eq 0 ]; then
+        echo "No such commit id."
         return
     elif [ $num_matches -gt 1 ]; then
-        echo "Ambiguous commit id"
+        echo "Ambiguous commit id."
+        echo "Possible commit ids :"
+        cat $remote/.git_log | egrep "^$1" | cut -d ":" -f 1
         return
     fi    
 
-    # remove the current files 
-    curr_commit_id=`cat $remote/.curr_commit_id`
-    current_files=`ls $remote/$curr_commit_id`
-
-    for file in $current_files; do
-        rm $file
-    done
-
     # obtain the commit id of the commit
-    matching_log=`cat $remote/.git_log | egrep $1`
+    matching_log=`cat $remote/.git_log | egrep "^$1"`
     commit_id=${matching_log%:*}
+
+    # if commit id is the same as the current commit id, do nothing
+    if [ $commit_id == `cat $remote/.curr_commit_id` ]; then
+        echo "Already at commit $commit_id."
+        return
+    fi
+
+    # remove the current files in the directory
+    rm -f *.csv
 
     # copy files from the directory to the current directory
     files_in_commit=`ls $remote/$commit_id`
@@ -233,11 +246,13 @@ elif [[ $1 == "commit" ]]; then
     com_msg=${com_msg#commit}
     commit $com_msg
 elif [[ $1 == "rm" ]]; then
-    rm $2
+    remove $2
 elif [[ $1 == "status" ]]; then
     status
 elif [[ $1 == "checkout" ]]; then
     checkout $2
+elif [[ $1 == "log" ]]; then
+    log
 else
     echo "Invalid command."
 fi
