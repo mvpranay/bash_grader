@@ -23,6 +23,12 @@ init(){
 
 # adds a file, once added, the file will be tracked. only the latest version will be considered for all purposes
 add(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
+
     # check if the file exists
     if [ ! -f $1 ]; then
         echo "File does not exist."
@@ -54,6 +60,12 @@ add(){
 }
 
 log(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
+
     remote=`cat .remote`
 
     curr_commit_id=`cat $remote/.curr_commit_id`
@@ -65,6 +77,12 @@ log(){
 
 # removes a file. once removed, the file will not be tracked
 remove(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
+
     # check if the file exists
     if [ ! -f $1 ]; then
         echo "File does not exist."
@@ -81,7 +99,6 @@ remove(){
     fi
 
     # using grep to pick all the lines except the line containing the file
-    # grep -v $1 $tracked_files > .temp
     cat $remote/.tracked_files | grep -v $1 > .temp
     mv .temp $remote/.tracked_files
 
@@ -90,11 +107,24 @@ remove(){
 }
 
 status(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
 
     remote=`cat .remote`
 
     curr_commit_id=`cat $remote/.curr_commit_id`
     latest_commit_id=`tail -n 1 $remote/.git_log | cut -d ":" -f 1`
+
+    # allow to run status only if you are in the latest commit
+    if [ ! -z $curr_commit_id ]; then
+        if [ $curr_commit_id != $latest_commit_id ]; then
+            echo "Please checkout the latest commit before checking status."
+            return
+        fi
+    fi
 
     declare -A latest_commit_files
 
@@ -156,10 +186,30 @@ hash(){
 }
 
 commit(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
+
     # commit msg is $*
+    remote=`cat .remote`
+
+    # allow commit only if you are currently in the latest commit
+    curr_commit_id=`cat $remote/.curr_commit_id`
+    latest_commit_id=`tail -n 1 $remote/.git_log | cut -d ":" -f 1`
+
+    if [ ! -z $curr_commit_id ]; then
+        if [ $curr_commit_id != $latest_commit_id ]; then
+            echo "Please checkout the latest commit before committing."
+            return
+        fi
+    fi
+
+    status_msg=`status`
 
     # check if there are changes to commit
-    if [ -z "`status`" ]; then
+    if [ -z "$status_msg" ]; then
         echo "No changes to commit."
         return
     fi
@@ -170,7 +220,24 @@ commit(){
         return
     fi
 
-    remote=`cat .remote`
+    # remove the deleted files from the tracked files
+    echo $status_msg | egrep "Deleted file" | cut -d ":" -f 2 > .temp
+
+    if [ -z "cat .temp" ]; then
+        :
+    else
+        : > .temp2
+
+        while read -r line; do
+            # line=`echo $line | xargs`
+            if [ -z "`cat .temp | egrep $line`" ]; then
+                echo $line >> .temp2
+            fi
+        done < "$remote/.tracked_files"
+
+        mv .temp2 $remote/.tracked_files
+    fi
+    rm .temp
 
     # obtain hash id
     hash_id=`hash`
@@ -192,6 +259,12 @@ commit(){
 }
 
 checkout(){
+    # check if mgit has been initialized
+    if [ ! -f ".remote" ]; then
+        echo "Please initialize mgit first."
+        return
+    fi
+
     # commit hash id is $1
     remote=`cat .remote`
 
