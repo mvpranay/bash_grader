@@ -23,6 +23,8 @@ Adds a "total" column to `main.csv`, summing the marks of each student across al
 
 Allows updating marks for specific students. Input includes the roll number, student name, and marks for different exams. This updates only the individual CSV files, combine/total needs to be called to update `main.csv`.
 
+---
+
 ### **Version Control Commands**
 
 #### **git\_init**
@@ -40,16 +42,16 @@ Commits the current version of the directory to the remote repository, generatin
 Example:
 
 ```bash
-bash submission.sh git_commit -m "Initial commit"
+bash submission.sh git_commit "Initial commit"
 ```
 
 #### **git\_checkout**
 
-Reverts the current directory to a specified commit. You can use a full or partial hash ID. A conflict is raised if multiple hashes match the prefix.
+Reverts the current directory to a specified commit. You can use a full or partial hash ID. If multiple commits have the same prefix of hash, all the possible hash IDs are displayed.
 Example:
 
 ```bash
-bash submission.sh git_checkout "Initial commit"
+bash submission.sh git_checkout 8193
 ```
 
 #### **git\_add**
